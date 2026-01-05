@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 vqueue = { git = "https://github.com/rosy233333/vqueue.git", default-features = false, optional = true }
 libvqueue = { path = "output/libvqueue", optional = true }
+kspin = { git = "https://github.com/arceos-org/kspin.git" }
+log = { version = "0.4", optional = true }
 
 [build-dependencies]
 build_vdso = { git = "https://github.com/rosy233333/vdso_crate_template.git", optional = true }
@@ -14,4 +16,4 @@ build_vdso = { git = "https://github.com/rosy233333/vdso_crate_template.git", op
 # 使用该库时，需选择启用"vdso"或"not_vdso"特性之一。
 vdso = ["build_vdso", "libvqueue"]
 not_vdso = ["vqueue"]
-default = ["vdso"]
+default = ["vdso", "log"]          # 使用log特性以启用日志记录功能

@@ -20,13 +20,13 @@ pub trait LocalEntityIf: Deref<Target = IPCSharedEntity> {
     }
 
     /// 从self接收msg_type类型的消息，返回消息内容
-    async fn recv(&self, msg_type: u64) -> Result<[u64; 8], String> {
+    async fn recv(&'static self, msg_type: u64) -> Result<[u64; 8], String> {
         let item = self.recv_inner(msg_type).await?;
         Ok(item.data)
     }
 
     /// 从self接收msg_type类型的消息
-    async fn recv_inner(&self, msg_type: u64) -> Result<IPCItem, String>;
+    async fn recv_inner(&'static self, msg_type: u64) -> Result<IPCItem, String>;
 }
 
 /// IPC实体中，可在进程间共享的部分。

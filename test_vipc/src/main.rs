@@ -9,7 +9,6 @@ use std::{
 use lazyinit::LazyInit;
 #[cfg(feature = "vdso")]
 use libvqueue as vqueue;
-use libvqueue::IPCItem;
 #[cfg(not(feature = "vdso"))]
 use memmap2::MmapMut;
 use vipc::{
@@ -24,9 +23,8 @@ mod map;
 #[cfg(feature = "vdso")]
 use crate::map::map_vdso;
 
-const QUEUE_NUM: usize = 16;
-const WORKERS_PER_QUEUE: usize = 16;
-const DATA_PER_WORKER: usize = 128;
+const WORKER_NUM: usize = 1000;
+const DATA_PER_WORKER: usize = 10;
 
 static CLIENT: LazyInit<QueueBasedLocalEntity> = LazyInit::new();
 static SERVER: LazyInit<QueueBasedLocalEntity> = LazyInit::new();
@@ -34,9 +32,6 @@ static CLIENT_ID: LazyInit<u64> = LazyInit::new();
 static SERVER_ID: LazyInit<u64> = LazyInit::new();
 
 fn main() {
-    assert!(QUEUE_NUM <= vqueue::ARRAY_LEN);
-    assert!(WORKERS_PER_QUEUE * DATA_PER_WORKER < vqueue::QUEUE_LEN);
-
     env_logger::init();
     log::info!("Starting IPC test...");
     #[cfg(feature = "vdso")]
@@ -59,24 +54,50 @@ fn main() {
     CLIENT_ID.init_once(CLIENT.id());
     SERVER_ID.init_once(SERVER.id());
 
+    // server
+    let server_thread = std::thread::spawn(|| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                for _ in 0..WORKER_NUM * DATA_PER_WORKER {
+                    let (msg_type, rep_type, data) = SERVER.recv_any().await.unwrap();
+                    SERVER.send(*CLIENT_ID, rep_type, msg_type, data).unwrap();
+                }
+            })
+    });
+
     // client
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap()
         .block_on(async {
+            tokio::spawn(CLIENT.default_dispatcher());
+
             let mut handles = Vec::new();
-            for i in 0..1000 {
+            for i in 0..WORKER_NUM {
                 handles.push(tokio::spawn(async move {
-                    CLIENT
-                        .send(*SERVER_ID, 42, [i as u64, 0, 0, 0, 0, 0, 0, 0])
-                        .expect("Client send failed");
+                    for j in 0..DATA_PER_WORKER {
+                        let rep = CLIENT
+                            .call(*SERVER_ID, 42, i as u64, [j as u64; 8])
+                            .await
+                            .unwrap();
+                        assert_eq!(rep.msg_type, i as u64);
+                        assert_eq!(rep.sender, *SERVER_ID);
+                        for k in 0..8 {
+                            assert_eq!(rep.data[k], j as u64);
+                        }
+                    }
                 }));
             }
             for handle in handles {
                 handle.await.unwrap();
             }
         });
+
+    server_thread.join().unwrap();
     println!("Test passed!");
     drop(map);
 }

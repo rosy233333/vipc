@@ -634,7 +634,7 @@ dependencies = [
 [[package]]
 name = "vqueue"
 version = "0.1.0"
-source = "git+https://github.com/rosy233333/vqueue.git#14c38b4dc02a0c96e2bd83fa0f303ac046aa6efa"
+source = "git+https://github.com/rosy233333/vqueue.git#119d90769e4b02603eb59317a594e2d9486a329d"
 dependencies = [
  "lazyinit",
  "vdso_helper",

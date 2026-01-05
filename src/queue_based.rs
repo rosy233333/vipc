@@ -52,7 +52,10 @@ pub struct QueueBasedLocalEntity {
     // slot_ref: SlotRef<'static, LockFreeDeque<IPCItem, QUEUE_CAPACITY>, ARRAY_LEN>,
     use_default_dispatcher: bool,
     wait_queue: SpinRaw<BTreeMap<u64, Vec<Waker>>>, // 只在同一进程的协程间同步，因此可以使用SpinRaw
-    immediate_values: SpinRaw<BTreeMap<u64, (u64, [u64; 8])>>,
+    /// key: msg_type,
+    ///
+    /// value: (sender, rep_type, data)
+    immediate_values: SpinRaw<BTreeMap<u64, (u64, u64, [u64; 8])>>,
 }
 
 // 构造函数
@@ -73,7 +76,7 @@ impl QueueBasedLocalEntity {
 }
 
 impl LocalEntityIf for QueueBasedLocalEntity {
-    async fn recv_inner(&'static self, msg_type: u64) -> Result<IPCItem, String> {
+    async fn recv(&'static self, msg_type: u64) -> Result<IPCItem, String> {
         WaitIPCFuture {
             entity: self,
             msg_type,
@@ -85,14 +88,14 @@ impl LocalEntityIf for QueueBasedLocalEntity {
 impl QueueBasedLocalEntity {
     /// 从self接收任意类型的消息，返回消息类型与消息内容。
     ///
-    /// 返回值：OK((msg_type: u64, data: [u64; 8]))或Err(String)
-    pub async fn recv_any(&self) -> Result<(u64, [u64; 8]), String> {
+    /// 返回值：OK((msg_type: u64, rep_type: u64, data: [u64; 8]))或Err(String)
+    pub async fn recv_any(&self) -> Result<(u64, u64, [u64; 8]), String> {
         if self.use_default_dispatcher {
             return Err("`recv_any` not supported with default dispatcher".to_string());
         }
         self.recv_any_inner()
             .await
-            .map(|item| (item.msg_type, item.data))
+            .map(|item| (item.msg_type, item.rep_type, item.data))
     }
 
     pub async fn default_dispatcher(&self) -> ! {
@@ -104,7 +107,7 @@ impl QueueBasedLocalEntity {
                         if self
                             .immediate_values
                             .lock()
-                            .insert(item.msg_type, (item.sender, item.data))
+                            .insert(item.msg_type, (item.sender, item.rep_type, item.data))
                             .is_some()
                         {
                             #[cfg(feature = "log")]
@@ -156,10 +159,13 @@ impl Future for WaitIPCFuture {
     type Output = Result<IPCItem, String>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if let Some((sender, data)) = self.entity.immediate_values.lock().remove(&self.msg_type) {
+        if let Some((sender, rep_type, data)) =
+            self.entity.immediate_values.lock().remove(&self.msg_type)
+        {
             Poll::Ready(Ok(IPCItem {
                 sender,
                 msg_type: self.msg_type,
+                rep_type,
                 data,
             }))
         } else {

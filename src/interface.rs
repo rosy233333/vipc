@@ -10,23 +10,36 @@ use alloc::{format, string::String};
 /// 通过本类型的生命周期管理IPC实体的注册与注销。
 pub trait LocalEntityIf: Deref<Target = IPCSharedEntity> {
     /// 从self向dst_id发送消息
-    fn send(&self, dst_id: u64, msg_type: u64, data: [u64; 8]) -> Result<(), String> {
+    fn send(
+        &self,
+        dst_id: u64,
+        msg_type: u64,
+        rep_type: u64,
+        data: [u64; 8],
+    ) -> Result<(), String> {
         let dst = IPCSharedEntity::from_id(dst_id)?;
         dst.send_to(IPCItem {
             sender: self.id(),
             msg_type,
+            rep_type,
             data,
         })
     }
 
-    /// 从self接收msg_type类型的消息，返回消息内容
-    async fn recv(&'static self, msg_type: u64) -> Result<[u64; 8], String> {
-        let item = self.recv_inner(msg_type).await?;
-        Ok(item.data)
-    }
-
     /// 从self接收msg_type类型的消息
-    async fn recv_inner(&'static self, msg_type: u64) -> Result<IPCItem, String>;
+    async fn recv(&'static self, msg_type: u64) -> Result<IPCItem, String>;
+
+    /// 从self向dst_id发送消息，并等待回复
+    async fn call(
+        &'static self,
+        dst_id: u64,
+        msg_type: u64,
+        rep_type: u64,
+        data: [u64; 8],
+    ) -> Result<IPCItem, String> {
+        self.send(dst_id, msg_type, rep_type, data)?;
+        self.recv(rep_type).await
+    }
 }
 
 /// IPC实体中，可在进程间共享的部分。

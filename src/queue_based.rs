@@ -57,8 +57,7 @@ pub struct QueueBasedLocalEntity {
 
 // 构造函数
 impl QueueBasedLocalEntity {
-    pub fn new_with_default_dispatcher() -> Result<Self, String> {
-        // todo: default_dispatcher协程的实现
+    pub fn new(use_default_dispatcher: bool) -> Result<Self, String> {
         let queue = register_queue().map_err(|_| "register queue failed.".to_string())?;
         Ok(Self {
             shared: IPCSharedEntity::QueueBased(QueueBasedSharedEntity::from_id(
@@ -66,7 +65,7 @@ impl QueueBasedLocalEntity {
                 queue.into_id() as u64,
             )?),
             // slot_ref: queue,
-            use_default_dispatcher: true,
+            use_default_dispatcher,
             wait_queue: SpinRaw::new(BTreeMap::new()),
             immediate_values: SpinRaw::new(BTreeMap::new()),
         })

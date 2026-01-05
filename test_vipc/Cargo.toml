@@ -1,0 +1,28 @@
+[package]
+name = "test_vipc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+memmap2 = "0.9.5"
+log = "0.4"
+env_logger = "0.9"
+xmas-elf = "0.9.0"
+elf_parser = { git = "https://github.com/rosy233333/elf_parser.git" }
+libc = "0.2"
+page_table_entry = { git = "https://github.com/rosy233333/page_table_entry.git" }
+include_bytes_aligned = "0.1.4"
+vqueue = { git = "https://github.com/rosy233333/vqueue.git", default-features = false, optional = true }
+libvqueue = { path = "../output/libvqueue", optional = true }
+vipc = { path = "..", default-features = false, features = ["log"] }
+tokio = { version = "1.36", features = ["full"] }
+lazyinit = "0.2"
+
+[build-dependencies]
+build_vdso = { git = "https://github.com/rosy233333/vdso_crate_template.git" }
+
+[features]
+# 使用该库时，需选择启用"vdso"或"not_vdso"特性之一。
+vdso = ["vipc/vdso", "libvqueue"]
+not_vdso = ["vipc/not_vdso", "vqueue"]
+default = ["vdso"]

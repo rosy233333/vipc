@@ -154,6 +154,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fork"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29714eb48a54d35d6f107e38cc58003f2e26825f222119db8369d28b24b79f2a"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "hal"
 version = "0.0.0"
 source = "git+https://github.com/rosy233333/vsched_hal.git#be4f44ef8e66f99a6ea06ca1411e505b1a1b1a5c"
@@ -539,6 +548,7 @@ dependencies = [
  "build_vdso",
  "elf_parser",
  "env_logger",
+ "fork",
  "include_bytes_aligned",
  "lazyinit",
  "libc",

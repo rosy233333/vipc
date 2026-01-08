@@ -1,7 +1,7 @@
 // Copied and modified from https://github.com/AsyncModules/vsched/blob/e19b572714a6931972f1428e42d43cc34bcf47f2/user_test/src/vsched.rs
 use include_bytes_aligned::include_bytes_aligned;
 use libvqueue::VvarData;
-use memmap2::MmapMut;
+use memmap2::{MmapMut, MmapOptions};
 use page_table_entry::MappingFlags;
 use std::ptr::copy_nonoverlapping;
 use std::str::from_utf8;
@@ -15,8 +15,23 @@ const VDSO: &[u8] = include_bytes_aligned!(8, "../../output/libvqueue.so");
 const VDSO_SIZE: usize =
     ((VDSO.len() + PAGES_SIZE_4K - 1) & (!(PAGES_SIZE_4K - 1))) + PAGES_SIZE_4K; // 额外加了一页，用于bss段等未出现在文件中的段
 
-pub fn map_vdso() -> Result<MmapMut, ()> {
-    let mut vdso_map = MmapMut::map_anon(VVAR_SIZE + VDSO_SIZE).unwrap();
+pub fn map_vdso() -> Result<&'static mut [u8], ()> {
+    let vdso_map = unsafe {
+        let map_ptr = libc::mmap(
+            std::ptr::null_mut(),
+            VVAR_SIZE + VDSO_SIZE,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_SHARED | libc::MAP_ANONYMOUS,
+            -1,
+            0,
+        );
+        if map_ptr == libc::MAP_FAILED {
+            log::error!("mmap vdso failed");
+            return Err(());
+        }
+        std::slice::from_raw_parts_mut(map_ptr as *mut () as *mut u8, VVAR_SIZE + VDSO_SIZE)
+    };
+    // let mut vdso_map = MmapMut::map_anon(VVAR_SIZE + VDSO_SIZE).unwrap();
     log::info!("vdso_map base: [{:p}, {:p}]", vdso_map.as_ptr(), unsafe {
         vdso_map.as_ptr().add(VVAR_SIZE + VDSO_SIZE)
     });

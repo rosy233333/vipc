@@ -2,7 +2,7 @@
 ARCH ?= riscv64
 MODE ?= release
 TARGET_DIR ?= $(PWD)/target
-UTEST_BIN ?= $(TARGET_DIR)/$(TARGET)/$(MODE)/test_vqueue
+UTEST_BIN ?= $(TARGET_DIR)/$(TARGET)/$(MODE)/test_vipc
 LOG ?= error
 
 # Target

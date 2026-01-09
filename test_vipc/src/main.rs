@@ -33,7 +33,7 @@ static SERVER_ID: LazyInit<u64> = LazyInit::new();
 
 fn main() {
     env_logger::init();
-    log::info!("Starting IPC test...");
+    println!("Starting VIPC test...");
     #[cfg(feature = "vdso")]
     let map = map_vdso().expect("Failed to map VDSO");
     #[cfg(not(feature = "vdso"))]
@@ -48,6 +48,7 @@ fn main() {
         }
         map
     };
+    println!("map: {:?}", map);
 
     CLIENT.init_once(QueueBasedLocalEntity::new(true).unwrap());
     SERVER.init_once(QueueBasedLocalEntity::new(false).unwrap());
@@ -56,13 +57,20 @@ fn main() {
 
     // server
     let server_thread = std::thread::spawn(|| {
+        println!("Into server thread");
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap()
             .block_on(async {
+                println!("Into server async");
+
                 for _ in 0..WORKER_NUM * DATA_PER_WORKER {
                     let (msg_type, rep_type, data) = SERVER.recv_any().await.unwrap();
+                    println!(
+                        "[Server] Received message: type={}, reply_type={}, data={:?}",
+                        msg_type, rep_type, data
+                    );
                     SERVER.send(*CLIENT_ID, rep_type, msg_type, data).unwrap();
                 }
             })
@@ -74,16 +82,27 @@ fn main() {
         .build()
         .unwrap()
         .block_on(async {
+            println!("Into client async");
             tokio::spawn(CLIENT.default_dispatcher());
+            println!("[Client] Dispatcher started");
 
             let mut handles = Vec::new();
             for i in 0..WORKER_NUM {
                 handles.push(tokio::spawn(async move {
+                    println!("[Client] Worker {} started", i);
                     for j in 0..DATA_PER_WORKER {
+                        println!(
+                            "[Client] Sending message: worker=msg_type={}, data={:?}",
+                            i, [j as u64; 8]
+                        );
                         let rep = CLIENT
                             .call(*SERVER_ID, 42, i as u64, [j as u64; 8])
                             .await
                             .unwrap();
+                        println!(
+                            "[Client] Received reply: worker={}, msg_type={}, sender={}, data={:?}",
+                            i, rep.msg_type, rep.sender, rep.data
+                        );
                         assert_eq!(rep.msg_type, i as u64);
                         assert_eq!(rep.sender, *SERVER_ID);
                         for k in 0..8 {

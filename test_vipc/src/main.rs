@@ -81,18 +81,37 @@ fn main() {
     SERVER.init_once(QueueBasedLocalEntity::new(false).unwrap());
     CLIENT_ID.init_once(CLIENT.id());
     SERVER_ID.init_once(SERVER.id());
+    log::info!("Client ID: {:#16x}", *CLIENT_ID);
+    log::info!("Server ID: {:#16x}", *SERVER_ID);
 
     match unsafe { libc::fork() } {
         0 => {
             // child, server
+            log::info!("Into server process");
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .unwrap()
                 .block_on(async {
+                    log::info!("Into server async");
                     for _ in 0..WORKER_NUM * DATA_PER_WORKER {
                         let (msg_type, rep_type, data) = SERVER.recv_any().await.unwrap();
-                        SERVER.send(*CLIENT_ID, rep_type, msg_type, data).unwrap();
+                        log::info!(
+                            "[Server] Received message: type={}, reply_type={}, data={:?}",
+                            msg_type,
+                            rep_type,
+                            data
+                        );
+                        assert!(msg_type == 42);
+                        SERVER
+                            .send(*CLIENT_ID, rep_type, msg_type, data.clone())
+                            .unwrap();
+                        log::info!(
+                            "[Server] Sent reply: msg_type={}, rep_type={}, data={:?}",
+                            rep_type,
+                            msg_type,
+                            data
+                        );
                     }
                 });
         }
@@ -104,38 +123,47 @@ fn main() {
                 .build()
                 .unwrap()
                 .block_on(async {
+                    log::info!("Into client async");
                     tokio::spawn(CLIENT.default_dispatcher());
+                    log::info!("[Client] Dispatcher started");
 
                     let mut handles = Vec::new();
                     for i in 0..WORKER_NUM {
                         handles.push(tokio::spawn(async move {
                             for j in 0..DATA_PER_WORKER {
+                                log::info!(
+                                    "[Client] Sending message: worker=msg_type={}, data={:?}",
+                                    i, [j as u64; 8]
+                                );
                                 let rep = CLIENT
                                     .call(*SERVER_ID, 42, i as u64, [j as u64; 8])
                                     .await
                                     .unwrap();
+                                log::info!(
+                                    "[Client] Received reply: worker={}, msg_type={}, sender={}, data={:?}",
+                                    i, rep.msg_type, rep.sender, rep.data
+                                );
                                 assert_eq!(rep.msg_type, i as u64);
                                 assert_eq!(rep.sender, *SERVER_ID);
                                 for k in 0..8 {
                                     assert_eq!(rep.data[k], j as u64);
                                 }
                             }
-                            println!("Worker {} done!", i);
+                            log::info!("Worker {} done!", i);
                         }));
                     }
                     for handle in handles {
                         handle.await.unwrap();
-                        println!("Worker done?");
                     }
                 });
 
-            println!("Test passed?");
+            log::info!("Test passed?");
             unsafe {
                 libc::kill(child, libc::SIGTERM);
                 libc::munmap(map.as_mut_ptr() as *mut () as *mut libc::c_void, map.len());
             }
 
-            println!("Test passed!!");
+            println!("Test passed!");
         }
     }
 

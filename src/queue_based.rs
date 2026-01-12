@@ -16,8 +16,10 @@ use core::{
 };
 use kspin::SpinRaw;
 
+/// 每个该对象持有一个SlotRef的引用计数。
 pub struct QueueBasedSharedEntity {
     queue_id: usize,
+    // queue: SlotRef<'static, LockFreeDeque<IPCItem, QUEUE_CAPACITY>, ARRAY_LEN>,
 }
 
 impl SharedEntityIf for QueueBasedSharedEntity {
@@ -26,10 +28,16 @@ impl SharedEntityIf for QueueBasedSharedEntity {
         self.queue_id as u64
     }
 
-    fn from_id(id: u64) -> Result<Self, String>
+    unsafe fn from_id(id: u64) -> Result<Self, String>
     where
         Self: Sized,
     {
+        // 增加引用计数
+        let slot_ref = unsafe { slotref_from_id(id as usize) };
+        #[cfg(feature = "log")]
+        log::debug!("QueueBasedSharedEntity::from_id: slot_ref={:?}", slot_ref);
+        slot_ref.clone().into_id();
+        slot_ref.into_id();
         Ok(Self {
             queue_id: id as usize,
         })
@@ -37,13 +45,21 @@ impl SharedEntityIf for QueueBasedSharedEntity {
 
     /// 发送消息给self
     fn send_to(&self, item: IPCItem) -> Result<(), String> {
-        push(self.queue_id, item).map_err(|_| "send failed".to_string())
+        #[cfg(feature = "log")]
+        log::debug!(
+            "QueueBasedSharedEntity::send_to: queue_id={}",
+            self.queue_id
+        );
+        let res = push(self.queue_id, item).map_err(|_| "send failed".to_string());
+        #[cfg(feature = "log")]
+        log::debug!("QueueBasedSharedEntity::send_to result: {:?}", res);
+        res
     }
 }
 
 impl Drop for QueueBasedSharedEntity {
     fn drop(&mut self) {
-        let _to_drop = QueueBasedSharedEntity::from_id(self.queue_id as u64);
+        let _to_drop = unsafe { slotref_from_id(self.queue_id) };
     }
 }
 
@@ -63,10 +79,15 @@ impl QueueBasedLocalEntity {
     pub fn new(use_default_dispatcher: bool) -> Result<Self, String> {
         let queue = register_queue().map_err(|_| "register queue failed.".to_string())?;
         Ok(Self {
-            shared: IPCSharedEntity::QueueBased(QueueBasedSharedEntity::from_id(
-                // queue.clone().into_id() as u64,
-                queue.into_id() as u64,
-            )?),
+            // shared: IPCSharedEntity::QueueBased(unsafe {
+            //     QueueBasedSharedEntity::from_id(
+            //         // queue.clone().into_id() as u64,
+            //         queue.into_id() as u64,
+            //     )?
+            // }),
+            shared: IPCSharedEntity::QueueBased(QueueBasedSharedEntity {
+                queue_id: queue.into_id(),
+            }),
             // slot_ref: queue,
             use_default_dispatcher,
             wait_queue: SpinRaw::new(BTreeMap::new()),
@@ -131,6 +152,9 @@ impl QueueBasedLocalEntity {
         loop {
             if let Some(item) = pop(queue_id) {
                 return Ok(item);
+            } else {
+                // yield now
+                YieldNowFuture::new().await;
             }
         }
     }
@@ -175,6 +199,30 @@ impl Future for WaitIPCFuture {
                 waker_list.push(cx.waker().clone());
             }
             Poll::Pending
+        }
+    }
+}
+
+struct YieldNowFuture(bool);
+
+impl YieldNowFuture {
+    fn new() -> Self {
+        Self(true)
+    }
+}
+
+impl Future for YieldNowFuture {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.0 {
+            // first poll
+            self.get_mut().0 = false;
+            cx.waker().wake_by_ref(); // 即使wake后该协程还未返回，下一次poll时也会直接进入else分支，应该在多线程环境下也是安全的？
+            Poll::Pending
+        } else {
+            // second poll
+            Poll::Ready(())
         }
     }
 }

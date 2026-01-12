@@ -17,13 +17,18 @@ pub trait LocalEntityIf: Deref<Target = IPCSharedEntity> {
         rep_type: u64,
         data: [u64; 8],
     ) -> Result<(), String> {
-        let dst = IPCSharedEntity::from_id(dst_id)?;
-        dst.send_to(IPCItem {
+        let dst = unsafe { IPCSharedEntity::from_id(dst_id)? };
+        #[cfg(feature = "log")]
+        log::debug!("send to id: {:#x}", dst.id());
+        let res = dst.send_to(IPCItem {
             sender: self.id(),
             msg_type,
             rep_type,
             data,
-        })
+        });
+        #[cfg(feature = "log")]
+        log::debug!("send result: {:?}", res);
+        res
     }
 
     /// 从self接收msg_type类型的消息
@@ -50,7 +55,11 @@ pub trait SharedEntityIf {
     fn id(&self) -> u64;
 
     /// 未增加类型识别符的id -> Self
-    fn from_id(id: u64) -> Result<Self, String>
+    ///
+    /// # Safety
+    ///
+    /// 调用者需确保id参数由本类型对象的`id`方法获得。
+    unsafe fn from_id(id: u64) -> Result<Self, String>
     where
         Self: Sized;
 
@@ -76,15 +85,15 @@ impl SharedEntityIf for IPCSharedEntity {
     }
 
     /// 已增加类型识别符的id -> Self
-    fn from_id(id: u64) -> Result<Self, String> {
+    unsafe fn from_id(id: u64) -> Result<Self, String> {
         let high8 = id & 0xFF00_0000_0000_0000;
         match high8 {
             QUEUE_BASED_HIGH8 => {
-                let ent = QueueBasedSharedEntity::from_id(id & 0x00FF_FFFF_FFFF_FFFF)?;
+                let ent = unsafe { QueueBasedSharedEntity::from_id(id & 0x00FF_FFFF_FFFF_FFFF) }?;
                 Ok(IPCSharedEntity::QueueBased(ent))
             }
             SCHED_BASED_HIGH8 => {
-                let ent = SchedBasedSharedEntity::from_id(id & 0x00FF_FFFF_FFFF_FFFF)?;
+                let ent = unsafe { SchedBasedSharedEntity::from_id(id & 0x00FF_FFFF_FFFF_FFFF) }?;
                 Ok(IPCSharedEntity::SchedBased(ent))
             }
             _ => Err(format!("Unknown IPC entity type with id: {}", id)),

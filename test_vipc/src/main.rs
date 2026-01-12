@@ -54,6 +54,8 @@ fn main() {
     SERVER.init_once(QueueBasedLocalEntity::new(false).unwrap());
     CLIENT_ID.init_once(CLIENT.id());
     SERVER_ID.init_once(SERVER.id());
+    println!("Client ID: {:#16x}", *CLIENT_ID);
+    println!("Server ID: {:#16x}", *SERVER_ID);
 
     // server
     let server_thread = std::thread::spawn(|| {
@@ -71,7 +73,14 @@ fn main() {
                         "[Server] Received message: type={}, reply_type={}, data={:?}",
                         msg_type, rep_type, data
                     );
-                    SERVER.send(*CLIENT_ID, rep_type, msg_type, data).unwrap();
+                    assert!(msg_type == 42);
+                    SERVER
+                        .send(*CLIENT_ID, rep_type, msg_type, data.clone())
+                        .unwrap();
+                    println!(
+                        "[Server] Sent reply: msg_type={}, rep_type={}, data={:?}",
+                        rep_type, msg_type, data
+                    );
                 }
             })
     });
@@ -115,6 +124,17 @@ fn main() {
                 handle.await.unwrap();
             }
         });
+
+    // tokio::runtime::Builder::new_current_thread()
+    //     .enable_all()
+    //     .build()
+    //     .unwrap()
+    //     .block_on(async {
+    //         CLIENT
+    //             .send(*SERVER_ID, 42, 0 as u64, [0 as u64; 8])
+    //             // .await
+    //             .unwrap();
+    //     });
 
     server_thread.join().unwrap();
     println!("Test passed!");

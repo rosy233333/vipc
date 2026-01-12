@@ -35,7 +35,7 @@ impl SharedEntityIf for SchedBasedSharedEntity {
         0
     }
 
-    fn from_id(id: u64) -> Result<Self, String>
+    unsafe fn from_id(id: u64) -> Result<Self, String>
     where
         Self: Sized,
     {

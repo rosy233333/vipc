@@ -50,7 +50,7 @@ impl SharedEntityIf for QueueBasedSharedEntity {
             "QueueBasedSharedEntity::send_to: queue_id={}",
             self.queue_id
         );
-        let res = push(self.queue_id, item).map_err(|_| "send failed".to_string());
+        let res = deque_push(self.queue_id, item).map_err(|_| "send failed".to_string());
         #[cfg(feature = "log")]
         log::debug!("QueueBasedSharedEntity::send_to result: {:?}", res);
         res
@@ -77,7 +77,7 @@ pub struct QueueBasedLocalEntity {
 // 构造函数
 impl QueueBasedLocalEntity {
     pub fn new(use_default_dispatcher: bool) -> Result<Self, String> {
-        let queue = register_queue().map_err(|_| "register queue failed.".to_string())?;
+        let queue = register_process().map_err(|_| "register queue failed.".to_string())?;
         Ok(Self {
             // shared: IPCSharedEntity::QueueBased(unsafe {
             //     QueueBasedSharedEntity::from_id(
@@ -150,7 +150,7 @@ impl QueueBasedLocalEntity {
             _ => return Err("invalid shared entity type".to_string()),
         };
         loop {
-            if let Some(item) = pop(queue_id) {
+            if let Some(item) = deque_pop(queue_id) {
                 return Ok(item);
             } else {
                 // yield now

@@ -9,6 +9,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
+use async_notification::interface::Notification;
 use core::{
     ops::Deref,
     pin::Pin,
@@ -66,6 +67,9 @@ impl Drop for QueueBasedSharedEntity {
 pub struct QueueBasedLocalEntity {
     shared: IPCSharedEntity,
     // slot_ref: SlotRef<'static, LockFreeDeque<IPCItem, QUEUE_CAPACITY>, ARRAY_LEN>,
+    /// - true: 使用信号/用户态中断的通知机制唤醒worker
+    /// - false: 使用dispatcher唤醒worker
+    use_notify: bool,
     use_default_dispatcher: bool,
     wait_queue: SpinRaw<BTreeMap<u64, Vec<Waker>>>, // 只在同一进程的协程间同步，因此可以使用SpinRaw
     /// key: msg_type,
@@ -76,7 +80,7 @@ pub struct QueueBasedLocalEntity {
 
 // 构造函数
 impl QueueBasedLocalEntity {
-    pub fn new(use_default_dispatcher: bool) -> Result<Self, String> {
+    pub fn new(use_notify: bool, use_default_dispatcher: bool) -> Result<Self, String> {
         let queue = register_process().map_err(|_| "register queue failed.".to_string())?;
         Ok(Self {
             // shared: IPCSharedEntity::QueueBased(unsafe {
@@ -89,6 +93,7 @@ impl QueueBasedLocalEntity {
                 queue_id: queue.into_id(),
             }),
             // slot_ref: queue,
+            use_notify,
             use_default_dispatcher,
             wait_queue: SpinRaw::new(BTreeMap::new()),
             immediate_values: SpinRaw::new(BTreeMap::new()),
@@ -153,8 +158,14 @@ impl QueueBasedLocalEntity {
             if let Some(item) = deque_pop(queue_id) {
                 return Ok(item);
             } else {
-                // yield now
-                YieldNowFuture::new().await;
+                if self.use_notify {
+                    // 阻塞，等待信号唤醒
+                    let ntf_id = Notification::new_id_signal();
+                    todo!()
+                } else {
+                    // 让出
+                    YieldNowFuture::new().await;
+                }
             }
         }
     }

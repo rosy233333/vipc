@@ -77,8 +77,8 @@ fn main() {
         map
     };
 
-    CLIENT.init_once(QueueBasedLocalEntity::new(true).unwrap());
-    SERVER.init_once(QueueBasedLocalEntity::new(false).unwrap());
+    CLIENT.init_once(QueueBasedLocalEntity::new(false, true).unwrap());
+    SERVER.init_once(QueueBasedLocalEntity::new(false, false).unwrap());
     CLIENT_ID.init_once(CLIENT.id());
     SERVER_ID.init_once(SERVER.id());
     log::info!("Client ID: {:#16x}", *CLIENT_ID);

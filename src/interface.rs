@@ -17,17 +17,19 @@ pub trait LocalEntityIf: Deref<Target = IPCSharedEntity> {
         rep_type: u64,
         data: [u64; 8],
     ) -> Result<(), String> {
+        // #[cfg(feature = "log")]
+        // log::debug!("send: before getting dst, dst_id: 0x{:016x}", dst_id);
         let dst = unsafe { IPCSharedEntity::from_id(dst_id)? };
-        #[cfg(feature = "log")]
-        log::debug!("send to id: {:#x}", dst.id());
+        // #[cfg(feature = "log")]
+        // log::debug!("send to id: {:#x}", dst.id());
         let res = dst.send_to(IPCItem {
             sender: self.id(),
             msg_type,
             rep_type,
             data,
         });
-        #[cfg(feature = "log")]
-        log::debug!("send result: {:?}", res);
+        // #[cfg(feature = "log")]
+        // log::debug!("send result: {:?}", res);
         res
     }
 
@@ -42,8 +44,15 @@ pub trait LocalEntityIf: Deref<Target = IPCSharedEntity> {
         rep_type: u64,
         data: [u64; 8],
     ) -> Result<IPCItem, String> {
+        #[cfg(feature = "log")]
+        log::debug!("call: before send");
         self.send(dst_id, msg_type, rep_type, data)?;
-        self.recv(rep_type).await
+        #[cfg(feature = "log")]
+        log::debug!("call: after send");
+        let res = self.recv(rep_type).await;
+        #[cfg(feature = "log")]
+        log::debug!("call: after recv");
+        res
     }
 }
 

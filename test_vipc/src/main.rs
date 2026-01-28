@@ -1,3 +1,4 @@
+use core::panic;
 use fork::*;
 use lazyinit::LazyInit;
 #[cfg(feature = "vdso")]
@@ -8,12 +9,14 @@ use std::{
     mem,
     sync::{
         Arc,
-        atomic::{AtomicIsize, AtomicUsize, Ordering},
+        atomic::{AtomicIsize, AtomicU64, AtomicUsize, Ordering},
     },
+    thread,
+    time::Duration,
 };
 use vipc::{
-    interface::{LocalEntityIf, SharedEntityIf},
-    queue_based::QueueBasedLocalEntity,
+    interface::{IPCSharedEntity, LocalEntityIf, SharedEntityIf},
+    queue_based::{QueueBasedLocalEntity, QueueBasedSharedEntity},
 };
 #[cfg(not(feature = "vdso"))]
 use vqueue;
@@ -28,8 +31,13 @@ const DATA_PER_WORKER: usize = 10;
 
 static CLIENT: LazyInit<QueueBasedLocalEntity> = LazyInit::new();
 static SERVER: LazyInit<QueueBasedLocalEntity> = LazyInit::new();
-static CLIENT_ID: LazyInit<u64> = LazyInit::new();
-static SERVER_ID: LazyInit<u64> = LazyInit::new();
+// static CLIENT_ID: LazyInit<u64> = LazyInit::new();
+// static SERVER_ID: LazyInit<u64> = LazyInit::new();
+
+struct ID {
+    client: AtomicU64,
+    server: AtomicU64,
+}
 
 pub fn map_shared() -> Result<&'static mut [u8], ()> {
     #[cfg(feature = "vdso")]
@@ -77,17 +85,41 @@ fn main() {
         map
     };
 
-    CLIENT.init_once(QueueBasedLocalEntity::new(false, true).unwrap());
-    SERVER.init_once(QueueBasedLocalEntity::new(false, false).unwrap());
-    CLIENT_ID.init_once(CLIENT.id());
-    SERVER_ID.init_once(SERVER.id());
-    log::info!("Client ID: {:#16x}", *CLIENT_ID);
-    log::info!("Server ID: {:#16x}", *SERVER_ID);
+    // CLIENT.init_once(QueueBasedLocalEntity::new(false, true, None).unwrap());
+    // SERVER.init_once(QueueBasedLocalEntity::new(false, false, None).unwrap());
+    // CLIENT_ID.init_once(CLIENT.id());
+    // SERVER_ID.init_once(SERVER.id());
+    // // CLIENT和SERVER会在fork中被复制（且未调用内部的clone），而两份拷贝均会操作共享数据，也因此会drop两遍共享数据。
+    // // 因此需要手动增加引用计数。
+    // mem::forget(unsafe { IPCSharedEntity::from_id(*CLIENT_ID) });
+    // mem::forget(unsafe { IPCSharedEntity::from_id(*SERVER_ID) });
+    // log::info!("Client ID: 0x{:016x}", *CLIENT_ID);
+    // log::info!("Server ID: 0x{:016x}", *SERVER_ID);
+
+    let id_ptr = unsafe {
+        &mut *(libc::mmap(
+            std::ptr::null_mut(),
+            mem::size_of::<ID>(),
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_SHARED | libc::MAP_ANONYMOUS,
+            -1,
+            0,
+        ) as *mut () as *mut ID)
+    };
 
     match unsafe { libc::fork() } {
         0 => {
             // child, server
             log::info!("Into server process");
+            let pid = unsafe { libc::getpid() };
+            SERVER.init_once(QueueBasedLocalEntity::new(true, false, Some(pid as usize)).unwrap());
+            let id = SERVER.id();
+            log::info!("server id: 0x{:016x}", id);
+            id_ptr.server.store(id, Ordering::Release);
+
+            thread::sleep(Duration::from_secs(1));
+            let client_id = id_ptr.client.load(Ordering::Acquire);
+
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
@@ -95,6 +127,7 @@ fn main() {
                 .block_on(async {
                     log::info!("Into server async");
                     for _ in 0..WORKER_NUM * DATA_PER_WORKER {
+                        log::info!("[Server] waiting for message...");
                         let (msg_type, rep_type, data) = SERVER.recv_any().await.unwrap();
                         log::info!(
                             "[Server] Received message: type={}, reply_type={}, data={:?}",
@@ -104,7 +137,7 @@ fn main() {
                         );
                         assert!(msg_type == 42);
                         SERVER
-                            .send(*CLIENT_ID, rep_type, msg_type, data.clone())
+                            .send(client_id, rep_type, msg_type, data.clone())
                             .unwrap();
                         log::info!(
                             "[Server] Sent reply: msg_type={}, rep_type={}, data={:?}",
@@ -118,14 +151,23 @@ fn main() {
         -1 => panic!("Fork failed!"),
         child => {
             // parent, client
+            let pid = unsafe { libc::getpid() };
+            CLIENT.init_once(QueueBasedLocalEntity::new(true, true, Some(pid as usize)).unwrap());
+            let id = CLIENT.id();
+            log::info!("client id: 0x{:016x}", id);
+            id_ptr.client.store(id, Ordering::Release);
+
+            thread::sleep(Duration::from_secs(1));
+            let server_id = id_ptr.server.load(Ordering::Acquire);
+
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .unwrap()
                 .block_on(async {
                     log::info!("Into client async");
-                    tokio::spawn(CLIENT.default_dispatcher());
-                    log::info!("[Client] Dispatcher started");
+                    // tokio::spawn(CLIENT.default_dispatcher());
+                    // log::info!("[Client] Dispatcher started");
 
                     let mut handles = Vec::new();
                     for i in 0..WORKER_NUM {
@@ -133,10 +175,11 @@ fn main() {
                             for j in 0..DATA_PER_WORKER {
                                 log::info!(
                                     "[Client] Sending message: worker=msg_type={}, data={:?}",
-                                    i, [j as u64; 8]
+                                    i,
+                                    [j as u64; 8]
                                 );
                                 let rep = CLIENT
-                                    .call(*SERVER_ID, 42, i as u64, [j as u64; 8])
+                                    .call(server_id, 42, i as u64, [j as u64; 8])
                                     .await
                                     .unwrap();
                                 log::info!(
@@ -144,7 +187,7 @@ fn main() {
                                     i, rep.msg_type, rep.sender, rep.data
                                 );
                                 assert_eq!(rep.msg_type, i as u64);
-                                assert_eq!(rep.sender, *SERVER_ID);
+                                assert_eq!(rep.sender, server_id);
                                 for k in 0..8 {
                                     assert_eq!(rep.data[k], j as u64);
                                 }
@@ -152,9 +195,11 @@ fn main() {
                             log::info!("Worker {} done!", i);
                         }));
                     }
+                    log::info!("[Client] before join");
                     for handle in handles {
                         handle.await.unwrap();
                     }
+                    log::info!("[Client] after join");
                 });
 
             log::info!("Test passed?");
@@ -166,47 +211,4 @@ fn main() {
             println!("Test passed!");
         }
     }
-
-    // // server
-    // let server_thread = std::thread::spawn(|| {
-    //     tokio::runtime::Builder::new_current_thread()
-    //         .enable_all()
-    //         .build()
-    //         .unwrap()
-    //         .block_on(async {
-    //             for _ in 0..WORKER_NUM * DATA_PER_WORKER {
-    //                 let (msg_type, rep_type, data) = SERVER.recv_any().await.unwrap();
-    //                 SERVER.send(*CLIENT_ID, rep_type, msg_type, data).unwrap();
-    //             }
-    //         })
-    // });
-
-    // // client
-    // tokio::runtime::Builder::new_current_thread()
-    //     .enable_all()
-    //     .build()
-    //     .unwrap()
-    //     .block_on(async {
-    //         tokio::spawn(CLIENT.default_dispatcher());
-
-    //         let mut handles = Vec::new();
-    //         for i in 0..WORKER_NUM {
-    //             handles.push(tokio::spawn(async move {
-    //                 for j in 0..DATA_PER_WORKER {
-    //                     let rep = CLIENT
-    //                         .call(*SERVER_ID, 42, i as u64, [j as u64; 8])
-    //                         .await
-    //                         .unwrap();
-    //                     assert_eq!(rep.msg_type, i as u64);
-    //                     assert_eq!(rep.sender, *SERVER_ID);
-    //                     for k in 0..8 {
-    //                         assert_eq!(rep.data[k], j as u64);
-    //                     }
-    //                 }
-    //             }));
-    //         }
-    //         for handle in handles {
-    //             handle.await.unwrap();
-    //         }
-    //     });
 }

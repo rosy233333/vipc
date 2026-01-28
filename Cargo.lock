@@ -34,7 +34,9 @@ name = "async_notification"
 version = "0.1.0"
 dependencies = [
  "futures",
+ "lazyinit",
  "libc",
+ "log",
  "signal-hook-tokio",
 ]
 

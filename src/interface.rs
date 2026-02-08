@@ -4,6 +4,7 @@ use crate::{
     queue_based::QueueBasedSharedEntity, sched_based::SchedBasedSharedEntity, vqueue::IPCItem,
 };
 use alloc::{format, string::String};
+use futures::stream::Stream;
 
 /// 本地进程持有的IPC实体。
 ///
@@ -35,6 +36,13 @@ pub trait LocalEntityIf: Deref<Target = IPCSharedEntity> {
 
     /// 从self接收msg_type类型的消息
     async fn recv(&'static self, msg_type: u64) -> Result<IPCItem, String>;
+
+    /// 从self持续接收msg_type类型的消息。
+    ///
+    /// 该函数会返回一个Stream（流/异步迭代器）。
+    ///
+    /// 使用单独接口的原因时在循环中调用`recv`可能会丢失两次调用之间到达的消息，但`recv_stream`则不会丢失。
+    fn recv_stream(&'static self, msg_type: u64) -> impl Stream<Item = Result<IPCItem, String>>;
 
     /// 从self向dst_id发送消息，并等待回复
     async fn call(

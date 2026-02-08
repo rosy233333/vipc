@@ -16,7 +16,7 @@ async_notification = { path = "../async_notification", features = [
     "signal",
     "log",
 ] }
-
+futures = "0.3"
 
 [build-dependencies]
 build_vdso = { git = "https://github.com/rosy233333/vdso_crate_template.git", optional = true }

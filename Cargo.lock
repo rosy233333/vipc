@@ -679,6 +679,7 @@ dependencies = [
 name = "test_vipc"
 version = "0.1.0"
 dependencies = [
+ "async_notification",
  "build_vdso",
  "elf_parser",
  "env_logger",
@@ -756,6 +757,7 @@ version = "0.1.0"
 dependencies = [
  "async_notification",
  "build_vdso",
+ "futures",
  "kspin",
  "libvqueue",
  "log",

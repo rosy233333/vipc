@@ -17,6 +17,7 @@ use core::{
     task::{Context, Poll, Waker},
     usize,
 };
+use futures::Stream;
 use kspin::SpinRaw;
 
 /// 每个该对象持有一个SlotRef的引用计数。
@@ -177,11 +178,17 @@ impl LocalEntityIf for QueueBasedLocalEntity {
                 f2: wait_notify(self, msg_type, notify_id),
             }
             .await;
-            Notification::release_id(notify_id);
+            unsafe {
+                Notification::release_id(notify_id);
+            }
             res
         } else {
             wait_dispatch(self, msg_type).await
         }
+    }
+
+    fn recv_stream(&'static self, msg_type: u64) -> impl Stream<Item = Result<IPCItem, String>> {
+        stream
     }
 }
 
@@ -234,11 +241,11 @@ impl QueueBasedLocalEntity {
             _ => return Err("invalid shared entity type".to_string()),
         };
         loop {
-            #[cfg(feature = "log")]
-            log::debug!("recv_any_inner loop");
+            // #[cfg(feature = "log")]
+            // log::debug!("recv_any_inner loop");
             if let Some(item) = deque_pop(queue_id) {
-                #[cfg(feature = "log")]
-                log::debug!("recv_any_inner return");
+                // #[cfg(feature = "log")]
+                // log::debug!("recv_any_inner return");
                 return Ok(item);
             } else {
                 // 使用通知唤醒，且分配到了通知源
@@ -247,8 +254,8 @@ impl QueueBasedLocalEntity {
                     .then_some(())
                     .and_then(|_| Notification::new_id_signal())
                 {
-                    #[cfg(feature = "log")]
-                    log::debug!("recv_any_inner wait");
+                    // #[cfg(feature = "log")]
+                    // log::debug!("recv_any_inner wait");
                     // 阻塞，等待通知源唤醒
                     map_add_entry(queue_id, usize::MAX, ntf_id as usize).unwrap();
                     Notification::wait_on(ntf_id).await;
@@ -256,8 +263,8 @@ impl QueueBasedLocalEntity {
                     YieldNowFuture::new().await;
                 } else {
                     // 让出
-                    #[cfg(feature = "log")]
-                    log::debug!("recv_any_inner yield");
+                    // #[cfg(feature = "log")]
+                    // log::debug!("recv_any_inner yield");
                     YieldNowFuture::new().await;
                 }
             }
@@ -513,5 +520,29 @@ impl<F1: Future<Output = O>, F2: Future<Output = O>, O> Future for SelectFuture<
             return Poll::Ready(o);
         }
         Poll::Pending
+    }
+}
+
+pub struct SignalRecvStream {
+    entity: &'static QueueBasedLocalEntity,
+    notify_id: u64,
+}
+
+impl Stream for SignalRecvStream {
+    type Item = Result<IPCItem, String>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        // // 目前该函数的实现还有问题：如果消息在此处到达，则未来得及被取出；
+        // // 而消息已经到达，也不会触发之后的通知。
+        // // 因此协程会一直阻塞。
+        // if let Some(item) = deque_pop(self.entity.queue_id) {
+        //     Poll::Ready(Some(Ok(item)))
+        // } else {
+        //     Notification::wait_on(self.notify_id)
+        //         .poll_unpin(cx)
+        //         .map(|res| {
+        //             res.map_err(|e| e.to_string()).map(|_| None) // 唤醒后由`recv`获取消息，因此这里返回None
+        //         })
+        // }
     }
 }

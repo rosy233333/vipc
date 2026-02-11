@@ -120,8 +120,8 @@ fn test_ipc() {
             // child, server
             log::info!("Into server process");
             let pid = unsafe { libc::getpid() };
-            // SERVER.init_once(QueueBasedLocalEntity::new(true, false, Some(pid as usize)).unwrap());
-            SERVER.init_once(QueueBasedLocalEntity::new(false, false, None).unwrap());
+            SERVER.init_once(QueueBasedLocalEntity::new(true, false, Some(pid as usize)).unwrap());
+            // SERVER.init_once(QueueBasedLocalEntity::new(false, false, None).unwrap());
             let id = SERVER.id();
             log::info!("server id: 0x{:016x}", id);
             id_ptr.server.store(id, Ordering::Release);
@@ -176,8 +176,8 @@ fn test_ipc() {
                 .unwrap()
                 .block_on(async {
                     log::info!("Into client async");
-                    // tokio::spawn(CLIENT.default_dispatcher());
-                    // log::info!("[Client] Dispatcher started");
+                    tokio::spawn(CLIENT.default_dispatcher());
+                    log::info!("[Client] Dispatcher started");
 
                     let mut handles = Vec::new();
                     for i in 0..WORKER_NUM {

@@ -72,7 +72,7 @@ pub fn map_vdso() -> Result<&'static mut [u8], ()> {
         let interp_path = from_utf8(interp).expect("Interpreter path isn't valid UTF-8");
         // remove trailing '\0'
         let _interp_path = interp_path.trim_matches(char::from(0)).to_string();
-        log::debug!("Interpreter path: {:?}", _interp_path);
+        // log::debug!("Interpreter path: {:?}", _interp_path);
     }
     let elf_base_addr = Some(vdso_so.as_ptr() as usize);
     let segments = elf_parser::get_elf_segments(&vdso_elf, elf_base_addr);

@@ -32,6 +32,7 @@ dependencies = [
 [[package]]
 name = "async_notification"
 version = "0.1.0"
+source = "git+https://github.com/rosy233333/async_notification.git#12ad0c43f05d746ff8ce47ca0652d3345c142026"
 dependencies = [
  "futures",
  "lazyinit",

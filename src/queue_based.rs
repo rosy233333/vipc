@@ -40,7 +40,7 @@ impl SharedEntityIf for QueueBasedSharedEntity {
         // log::debug!("QueueBasedSharedEntity::from_id: id=0x{:016x}", id);
         // 增加引用计数
         let slot_ref = unsafe { slotref_from_id(id as usize) };
-        #[cfg(feature = "log")]
+        // #[cfg(feature = "log")]
         // log::debug!(
         //     "QueueBasedSharedEntity::from_id: slot_ref={:?}, rc={} before increase",
         //     slot_ref,
@@ -61,11 +61,11 @@ impl SharedEntityIf for QueueBasedSharedEntity {
 
     /// 发送消息给self
     fn send_to(&self, item: IPCItem) -> Result<(), String> {
-        #[cfg(feature = "log")]
-        log::debug!(
-            "QueueBasedSharedEntity::send_to: queue_id={}",
-            self.queue_id
-        );
+        // #[cfg(feature = "log")]
+        // log::debug!(
+        //     "QueueBasedSharedEntity::send_to: queue_id={}",
+        //     self.queue_id
+        // );
         let res = deque_push(self.queue_id, item).map_err(|_| "send failed".to_string());
         let pid = get_pid(self.queue_id) as u64;
         // 根据pid是否为0判断是否需要通知
@@ -73,17 +73,17 @@ impl SharedEntityIf for QueueBasedSharedEntity {
             if let Some(ntf_id) = map_get_ntf_id(self.queue_id, usize::MAX)
                 .or_else(|| map_get_ntf_id(self.queue_id, item.msg_type as usize))
             {
-                #[cfg(feature = "log")]
-                log::debug!(
-                    "QueueBasedSharedEntity::send_to: need to notify: pid={}, ntf_id=0x{:016x}",
-                    pid,
-                    ntf_id
-                );
+                // #[cfg(feature = "log")]
+                // log::debug!(
+                //     "QueueBasedSharedEntity::send_to: need to notify: pid={}, ntf_id=0x{:016x}",
+                //     pid,
+                //     ntf_id
+                // );
                 Notification::notify(pid, ntf_id as u64);
             }
         }
-        #[cfg(feature = "log")]
-        log::debug!("QueueBasedSharedEntity::send_to result: {:?}", res);
+        // #[cfg(feature = "log")]
+        // log::debug!("QueueBasedSharedEntity::send_to result: {:?}", res);
         res
     }
 }
@@ -163,33 +163,34 @@ impl QueueBasedLocalEntity {
 
 impl LocalEntityIf for QueueBasedLocalEntity {
     async fn recv(&'static self, msg_type: u64) -> Result<IPCItem, String> {
-        // 如果`self.use_notify`为`true`，且分配到了通知id
-        if let Some(notify_id) = self
-            .use_notify
-            .then_some(())
-            .and_then(|_| Notification::new_id_signal())
-        {
-            // 先从`immediate_values`中获取，未获取到则注册到等待队列中；
-            // 再从IPC队列中获取，未获取到则注册通知唤醒。
-            // 由两个唤醒源之一唤醒后，就能获取到IPC消息。
-            // 由于取消安全的要求，在这之后会取消另一个唤醒源。
-            let res = SelectFuture {
-                f1: wait_dispatch(self, msg_type),
-                f2: wait_notify(self, msg_type, notify_id),
-            }
-            .await;
-            unsafe {
-                Notification::release_id(notify_id);
-            }
-            res
-        } else {
-            wait_dispatch(self, msg_type).await
-        }
+        // // 如果`self.use_notify`为`true`，且分配到了通知id
+        // if let Some(notify_id) = self
+        //     .use_notify
+        //     .then_some(())
+        //     .and_then(|_| Notification::new_id_signal())
+        // {
+        //     // 先从`immediate_values`中获取，未获取到则注册到等待队列中；
+        //     // 再从IPC队列中获取，未获取到则注册通知唤醒。
+        //     // 由两个唤醒源之一唤醒后，就能获取到IPC消息。
+        //     // 由于取消安全的要求，在这之后会取消另一个唤醒源。
+        //     let res = SelectFuture {
+        //         f1: wait_dispatch(self, msg_type),
+        //         f2: wait_notify(self, msg_type, notify_id),
+        //     }
+        //     .await;
+        //     unsafe {
+        //         Notification::release_id(notify_id);
+        //     }
+        //     res
+        // } else {
+        //     wait_dispatch(self, msg_type).await
+        // }
+        wait_dispatch(self, msg_type).await
     }
 
-    fn recv_stream(&'static self, msg_type: u64) -> impl Stream<Item = Result<IPCItem, String>> {
-        stream
-    }
+    // fn recv_stream(&'static self, msg_type: u64) -> impl Stream<Item = Result<IPCItem, String>> {
+    //     stream
+    // }
 }
 
 impl QueueBasedLocalEntity {
@@ -201,8 +202,8 @@ impl QueueBasedLocalEntity {
             return Err("`recv_any` not supported with default dispatcher".to_string());
         }
         let res = self.recv_any_inner().await;
-        #[cfg(feature = "log")]
-        log::debug!("recv_any: received {:?}", res);
+        // #[cfg(feature = "log")]
+        // log::debug!("recv_any: received {:?}", res);
         res.map(|item| (item.msg_type, item.rep_type, item.data))
     }
 
@@ -210,8 +211,8 @@ impl QueueBasedLocalEntity {
         loop {
             // todo: 传递数据给对应的等待者
             if let Ok(item) = self.recv_any_inner().await {
-                #[cfg(feature = "log")]
-                log::debug!("default dispatcher recvive: {:?}", item);
+                // #[cfg(feature = "log")]
+                // log::debug!("default dispatcher recvive: {:?}", item);
                 if self
                     .immediate_values
                     .lock()
@@ -225,8 +226,8 @@ impl QueueBasedLocalEntity {
                     while let Some(waker_weak) = waker_list.pop() {
                         if let Some(waker) = waker_weak.upgrade() {
                             waker.wake_by_ref();
-                            #[cfg(feature = "log")]
-                            log::debug!("default dispatcher wake a task");
+                            // #[cfg(feature = "log")]
+                            // log::debug!("default dispatcher wake a task");
                             break;
                         }
                     }
@@ -249,18 +250,44 @@ impl QueueBasedLocalEntity {
                 return Ok(item);
             } else {
                 // 使用通知唤醒，且分配到了通知源
-                if let Some(ntf_id) = self
-                    .use_notify
-                    .then_some(())
-                    .and_then(|_| Notification::new_id_signal())
-                {
+                // if let Some(ntf_id) = self
+                //     .use_notify
+                //     .then_some(())
+                //     .and_then(|_| Notification::new_id_signal())
+                // {
+                //     // #[cfg(feature = "log")]
+                //     // log::debug!("recv_any_inner wait");
+                //     // 阻塞，等待通知源唤醒
+                //     map_add_entry(queue_id, usize::MAX, ntf_id as usize).unwrap();
+                //     Notification::wait_on(ntf_id).await;
+                //     map_pop_ntf_id(queue_id, usize::MAX).unwrap();
+                //     // YieldNowFuture::new().await; // 这句有什么用？
+                // } else {
+                //     // 让出
+                //     // #[cfg(feature = "log")]
+                //     // log::debug!("recv_any_inner yield");
+                //     YieldNowFuture::new().await;
+                // }
+                // 若使用通知（`use_notify`），则首先查询是否已经有通知源被注册（`map_get_ntf_id`），若有则直接使用；
+                // 否则尝试分配一个通知源（`Notification::new_id_signal()`）并注册（`map_add_entry`）。
+                // 其余情况，则使用让出。
+                //
+                // 通过复用通知源，可以避免错过两次`wait_on`之间到达的通知
+                if let Some(ntf_id) = self.use_notify.then_some(()).and_then(|_| {
+                    map_get_ntf_id(queue_id, usize::MAX)
+                        .map(|ntf_id| ntf_id as u64)
+                        .or_else(|| {
+                            Notification::new_id_signal().map(|ntf_id| {
+                                map_add_entry(queue_id, usize::MAX, ntf_id as usize).unwrap();
+                                ntf_id
+                            })
+                        })
+                }) {
                     // #[cfg(feature = "log")]
                     // log::debug!("recv_any_inner wait");
                     // 阻塞，等待通知源唤醒
-                    map_add_entry(queue_id, usize::MAX, ntf_id as usize).unwrap();
                     Notification::wait_on(ntf_id).await;
-                    map_pop_ntf_id(queue_id, usize::MAX).unwrap();
-                    YieldNowFuture::new().await;
+                    // YieldNowFuture::new().await; // 这句有什么用？
                 } else {
                     // 让出
                     // #[cfg(feature = "log")]
@@ -312,6 +339,19 @@ impl QueueBasedLocalEntity {
     //     }
     // }
 }
+
+// impl QueueBasedLocalEntity {
+//     // 从暂存区获取消息
+//     fn get_from_immediate_values(&self, msg_type: u64) -> Option<IPCItem> {
+//         let res = self.immediate_values.lock().remove(&msg_type);
+//         res.map(|(sender, rep_type, data)| IPCItem {
+//             sender,
+//             msg_type,
+//             rep_type,
+//             data,
+//         })
+//     }
+// }
 
 impl Deref for QueueBasedLocalEntity {
     type Target = IPCSharedEntity;
@@ -394,16 +434,16 @@ fn wait_notify(
         _ => panic!("invalid shared entity type"),
     };
 
-    #[cfg(feature = "log")]
-    log::debug!(
-        "wait_notify: before map_add_entry(queue_id={}, msg_type={}, ntf_id=0x{:016x})",
-        queue_id,
-        msg_type,
-        ntf_id
-    );
+    // #[cfg(feature = "log")]
+    // log::debug!(
+    //     "wait_notify: before map_add_entry(queue_id={}, msg_type={}, ntf_id=0x{:016x})",
+    //     queue_id,
+    //     msg_type,
+    //     ntf_id
+    // );
     map_add_entry(queue_id, msg_type as usize, ntf_id as usize).unwrap();
-    #[cfg(feature = "log")]
-    log::debug!("wait_notify: after map_add_entry");
+    // #[cfg(feature = "log")]
+    // log::debug!("wait_notify: after map_add_entry");
 
     WaitNotifyFuture {
         entity,
@@ -420,8 +460,8 @@ impl<F: Future> Future for WaitNotifyFuture<F> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // 先从队列中获取消息
         while let Some(item) = deque_pop(self.queue_id) {
-            #[cfg(feature = "log")]
-            log::debug!("WaitNotifyFuture::poll: get item {:?}", item);
+            // #[cfg(feature = "log")]
+            // log::debug!("WaitNotifyFuture::poll: get item {:?}", item);
             if item.msg_type == self.msg_type {
                 // 是自己的消息
                 return Poll::Ready(Ok(item));
@@ -449,8 +489,8 @@ impl<F: Future> Future for WaitNotifyFuture<F> {
         }
 
         // 再等待通知
-        #[cfg(feature = "log")]
-        log::debug!("WaitNotifyFuture::poll: before wait");
+        // #[cfg(feature = "log")]
+        // log::debug!("WaitNotifyFuture::poll: before wait");
 
         let res = unsafe { self.map_unchecked_mut(|s| &mut s.wait_future) }.poll(cx);
         assert!(res.is_pending());
@@ -523,26 +563,26 @@ impl<F1: Future<Output = O>, F2: Future<Output = O>, O> Future for SelectFuture<
     }
 }
 
-pub struct SignalRecvStream {
-    entity: &'static QueueBasedLocalEntity,
-    notify_id: u64,
-}
+// pub struct SignalRecvStream {
+//     entity: &'static QueueBasedLocalEntity,
+//     notify_id: u64,
+// }
 
-impl Stream for SignalRecvStream {
-    type Item = Result<IPCItem, String>;
+// impl Stream for SignalRecvStream {
+//     type Item = Result<IPCItem, String>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        // // 目前该函数的实现还有问题：如果消息在此处到达，则未来得及被取出；
-        // // 而消息已经到达，也不会触发之后的通知。
-        // // 因此协程会一直阻塞。
-        // if let Some(item) = deque_pop(self.entity.queue_id) {
-        //     Poll::Ready(Some(Ok(item)))
-        // } else {
-        //     Notification::wait_on(self.notify_id)
-        //         .poll_unpin(cx)
-        //         .map(|res| {
-        //             res.map_err(|e| e.to_string()).map(|_| None) // 唤醒后由`recv`获取消息，因此这里返回None
-        //         })
-        // }
-    }
-}
+//     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+//         // // 目前该函数的实现还有问题：如果消息在此处到达，则未来得及被取出；
+//         // // 而消息已经到达，也不会触发之后的通知。
+//         // // 因此协程会一直阻塞。
+//         // if let Some(item) = deque_pop(self.entity.queue_id) {
+//         //     Poll::Ready(Some(Ok(item)))
+//         // } else {
+//         //     Notification::wait_on(self.notify_id)
+//         //         .poll_unpin(cx)
+//         //         .map(|res| {
+//         //             res.map_err(|e| e.to_string()).map(|_| None) // 唤醒后由`recv`获取消息，因此这里返回None
+//         //         })
+//         // }
+//     }
+// }

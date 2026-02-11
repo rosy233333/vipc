@@ -12,7 +12,11 @@ vqueue = { git = "https://github.com/rosy233333/vqueue.git", default-features = 
 libvqueue = { path = "output/libvqueue", optional = true }
 kspin = { git = "https://github.com/arceos-org/kspin.git" }
 log = { version = "0.4", optional = true }
-async_notification = { path = "../async_notification", features = [
+# async_notification = { path = "../async_notification", features = [
+#     "signal",
+#     "log",
+# ] }
+async_notification = { git = "https://github.com/rosy233333/async_notification.git", features = [
     "signal",
     "log",
 ] }

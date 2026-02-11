@@ -18,7 +18,8 @@ vipc = { path = "..", default-features = false, features = ["log"] }
 tokio = { version = "1.36", features = ["full"] }
 lazyinit = "0.2"
 fork = "0.6"
-async_notification = { path = "../../async_notification" }
+# async_notification = { path = "../../async_notification" }
+async_notification = { git = "https://github.com/rosy233333/async_notification.git" }
 
 [build-dependencies]
 build_vdso = { git = "https://github.com/rosy233333/vdso_crate_template.git" }

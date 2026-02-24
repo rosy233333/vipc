@@ -23,10 +23,10 @@ use vipc::{
 #[cfg(not(feature = "vdso"))]
 use vqueue;
 
-#[cfg(feature = "vdso")]
-mod map;
-#[cfg(feature = "vdso")]
-use crate::map::map_vdso;
+// #[cfg(feature = "vdso")]
+// mod map;
+// #[cfg(feature = "vdso")]
+// use crate::map::map_vdso;
 
 const WORKER_NUM: usize = 1000;
 const DATA_PER_WORKER: usize = 10;
@@ -41,33 +41,33 @@ struct ID {
     server: AtomicU64,
 }
 
-pub fn map_shared() -> Result<&'static mut [u8], ()> {
-    #[cfg(feature = "vdso")]
-    {
-        map_vdso()
-    }
-    #[cfg(not(feature = "vdso"))]
-    unsafe {
-        use std::ptr::NonNull;
+// pub fn map_shared() -> Result<&'static mut [u8], ()> {
+//     #[cfg(feature = "vdso")]
+//     {
+//         map_vdso()
+//     }
+//     #[cfg(not(feature = "vdso"))]
+//     unsafe {
+//         use std::ptr::NonNull;
 
-        let map_ptr = libc::mmap(
-            std::ptr::null_mut(),
-            vqueue::QUEUE_ARRAY_SIZE,
-            libc::PROT_READ | libc::PROT_WRITE,
-            libc::MAP_SHARED | libc::MAP_ANONYMOUS,
-            -1,
-            0,
-        );
-        if map_ptr == libc::MAP_FAILED {
-            log::error!("mmap vdso failed");
-            return Err(());
-        }
-        let map =
-            std::slice::from_raw_parts_mut(map_ptr as *mut () as *mut u8, vqueue::QUEUE_ARRAY_SIZE);
+//         let map_ptr = libc::mmap(
+//             std::ptr::null_mut(),
+//             vqueue::QUEUE_ARRAY_SIZE,
+//             libc::PROT_READ | libc::PROT_WRITE,
+//             libc::MAP_SHARED | libc::MAP_ANONYMOUS,
+//             -1,
+//             0,
+//         );
+//         if map_ptr == libc::MAP_FAILED {
+//             log::error!("mmap vdso failed");
+//             return Err(());
+//         }
+//         let map =
+//             std::slice::from_raw_parts_mut(map_ptr as *mut () as *mut u8, vqueue::QUEUE_ARRAY_SIZE);
 
-        vqueue::set_queue_array_addr_and_init(NonNull::new(map.as_mut_ptr() as *mut ()).unwrap());
-    }
-}
+//         vqueue::set_queue_array_addr_and_init(NonNull::new(map.as_mut_ptr() as *mut ()).unwrap());
+//     }
+// }
 
 fn main() {
     test_ipc();
@@ -75,11 +75,53 @@ fn main() {
     // test_signal_2();
 }
 
+#[cfg(feature = "vdso")]
+struct MemIfImpl;
+#[cfg(feature = "vdso")]
+#[crate_interface::impl_interface]
+impl libvqueue::MemIf for MemIfImpl {
+    fn alloc(size: usize) -> *mut u8 {
+        let map_ptr = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                size,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_SHARED | libc::MAP_ANONYMOUS,
+                -1,
+                0,
+            )
+        };
+        if map_ptr == libc::MAP_FAILED {
+            panic!("mmap vdso failed");
+        }
+        map_ptr as *mut u8
+    }
+
+    fn protect(addr: *mut u8, len: usize, flags: libvqueue::MappingFlags) {
+        use libvqueue::MappingFlags;
+
+        let mut libc_flag = libc::PROT_READ;
+        if flags.contains(MappingFlags::EXECUTE) {
+            libc_flag |= libc::PROT_EXEC;
+        }
+        if flags.contains(MappingFlags::WRITE) {
+            libc_flag |= libc::PROT_WRITE;
+        }
+        unsafe {
+            if libc::mprotect(addr as _, len, libc_flag) == libc::MAP_FAILED as _ {
+                panic!("vdso: mprotect res failed");
+            }
+        };
+    }
+}
+
 fn test_ipc() {
     env_logger::init();
     log::info!("Starting IPC test...");
+    // #[cfg(feature = "vdso")]
+    // let map = map_vdso().unwrap();
     #[cfg(feature = "vdso")]
-    let map = map_vdso().expect("Failed to map VDSO");
+    libvqueue::load_and_init();
     #[cfg(not(feature = "vdso"))]
     let map = {
         let mut map = MmapMut::map_anon(vqueue::QUEUE_ARRAY_SIZE).unwrap();
@@ -215,6 +257,7 @@ fn test_ipc() {
             log::info!("Test passed?");
             unsafe {
                 libc::kill(child, libc::SIGTERM);
+                #[cfg(not(feature = "vdso"))]
                 libc::munmap(map.as_mut_ptr() as *mut () as *mut libc::c_void, map.len());
             }
 

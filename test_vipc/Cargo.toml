@@ -10,7 +10,7 @@ env_logger = "0.9"
 xmas-elf = "0.9.0"
 elf_parser = { git = "https://github.com/rosy233333/elf_parser.git" }
 libc = "0.2"
-page_table_entry = { git = "https://github.com/rosy233333/page_table_entry.git" }
+page_table_entry = "0.5.7"
 include_bytes_aligned = "0.1.4"
 vqueue = { git = "https://github.com/rosy233333/vqueue.git", default-features = false, optional = true }
 libvqueue = { path = "../output/libvqueue", optional = true }
@@ -18,6 +18,7 @@ vipc = { path = "..", default-features = false, features = ["log"] }
 tokio = { version = "1.36", features = ["full"] }
 lazyinit = "0.2"
 fork = "0.6"
+crate_interface = { version = "0.2", optional = true }
 # async_notification = { path = "../../async_notification" }
 async_notification = { git = "https://github.com/rosy233333/async_notification.git" }
 
@@ -26,6 +27,6 @@ build_vdso = { git = "https://github.com/rosy233333/vdso_crate_template.git" }
 
 [features]
 # 使用该库时，需选择启用"vdso"或"not_vdso"特性之一。
-vdso = ["vipc/vdso", "libvqueue"]
+vdso = ["vipc/vdso", "libvqueue", "crate_interface"]
 not_vdso = ["vipc/not_vdso", "vqueue"]
 default = ["vdso"]

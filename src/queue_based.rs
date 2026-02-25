@@ -1,4 +1,4 @@
-// 暂时不考虑dispatcher的唤醒，使dispatcher不睡眠地轮询。
+//! 基于队列的IPC实体
 
 use crate::{
     interface::{IPCSharedEntity, LocalEntityIf, SharedEntityIf},
@@ -20,6 +20,8 @@ use core::{
 use futures::Stream;
 use kspin::SpinRaw;
 
+/// 基于队列的共享IPC实体（共享实体与本地实体的关系见`interface.rs`）
+///
 /// 每个该对象持有一个SlotRef的引用计数。
 pub struct QueueBasedSharedEntity {
     queue_id: usize,
@@ -100,6 +102,25 @@ impl Drop for QueueBasedSharedEntity {
     }
 }
 
+/// 基于队列的本地IPC实体（共享实体与本地实体的关系见`interface.rs`）
+///
+/// ## default dispatcher
+///
+/// 若使用default dispatcher，则需要运行dispatcher协程。可以使用`recv_any`接收特定类型的消息。
+///
+/// 若不使用default dispatcher，则无法按类型接收消息，但可以使用`recv_any`接收任意类型的消息。
+///
+/// ## 消息接收机制
+///
+/// ### 使用default dispatcher时
+///
+/// 在接收消息时，首先从暂存区`immediate_values`中获取，未获取到则注册到等待队列中并等待dispatcher协程唤醒。
+///
+/// 根据`use_notify`的值，dispatcher协程可能保持轮询，也可能在接收不到消息时睡眠，使用信号/用户态中断的通知机制唤醒。
+///
+/// ### 不使用default dispatcher时
+///
+/// 调用`recv_any`的协程的唤醒机制与上文中的dispatcher协程类似。
 pub struct QueueBasedLocalEntity {
     shared: IPCSharedEntity,
     // slot_ref: SlotRef<'static, LockFreeDeque<IPCItem, QUEUE_CAPACITY>, ARRAY_LEN>,
@@ -207,6 +228,9 @@ impl QueueBasedLocalEntity {
         res.map(|item| (item.msg_type, item.rep_type, item.data))
     }
 
+    /// 默认的dispatcher协程，持续接收消息并分发给对应的等待者。
+    ///
+    /// 若创建QueueBasedLocalEntity时`use_default_dispatcher`为`true`，则需要手动将该协程加入运行队列。
     pub async fn default_dispatcher(&self) -> ! {
         loop {
             // todo: 传递数据给对应的等待者

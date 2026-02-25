@@ -1,7 +1,12 @@
+//! IPC队列与调度队列统一的IPC实体
+//!
+//! 还未实现
+
 // use crate::interface::AbsIPCEntity;
 use crate::{interface::SharedEntityIf, vqueue::IPCItem};
 use alloc::string::String;
 
+/// IPC队列与调度队列统一的共享IPC实体
 pub struct SchedBasedSharedEntity {
     // todo
 }

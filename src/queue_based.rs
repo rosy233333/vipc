@@ -218,14 +218,14 @@ impl QueueBasedLocalEntity {
     /// 从self接收任意类型的消息，返回消息类型与消息内容。
     ///
     /// 返回值：OK((msg_type: u64, rep_type: u64, data: [u64; 8]))或Err(String)
-    pub async fn recv_any(&self) -> Result<(u64, u64, [u64; 8]), String> {
+    pub async fn recv_any(&self) -> Result<IPCItem, String> {
         if self.use_default_dispatcher {
             return Err("`recv_any` not supported with default dispatcher".to_string());
         }
         let res = self.recv_any_inner().await;
         // #[cfg(feature = "log")]
         // log::debug!("recv_any: received {:?}", res);
-        res.map(|item| (item.msg_type, item.rep_type, item.data))
+        res
     }
 
     /// 默认的dispatcher协程，持续接收消息并分发给对应的等待者。

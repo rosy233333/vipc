@@ -21,9 +21,13 @@ fork = "0.6"
 crate_interface = { version = "0.2", optional = true }
 # async_notification = { path = "../../async_notification" }
 async_notification = { git = "https://github.com/rosy233333/async_notification.git" }
+# 使用时，需要换成编译输出版本
+libvsched2 = { git = "https://github.com/rosy233333/vsched2.git", package = "vsched2" }
+
 
 [build-dependencies]
-build_vdso = { git = "https://github.com/rosy233333/vdso_crate_template.git" }
+# build_vdso = { git = "https://github.com/rosy233333/vdso_crate_template.git" }
+build_vdso = { path = "../../vdso_crate_template/build_vdso" }
 
 [features]
 # 使用该库时，需选择启用"vdso"或"not_vdso"特性之一。
